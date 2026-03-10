@@ -123,5 +123,4 @@ Password: 12345
 | Rose Shainnah Viray| Documentation and project planning |
 
 ## Project Plan Link
-[Project Plan]([url](https://docs.google.com/spreadsheets/d/1_m45CKZOxXQACvRq4Trh9mC0srFXp7PWaBj8YFjnHbc/edit?usp=sharing)
-)
+[Project Plan](https://docs.google.com/spreadsheets/d/1_m45CKZOxXQACvRq4Trh9mC0srFXp7PWaBj8YFjnHbc/edit?usp=sharing)
