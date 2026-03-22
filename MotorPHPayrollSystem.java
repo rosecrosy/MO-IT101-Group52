@@ -26,12 +26,16 @@ public class MotorPHPayrollSystem {
 
     static DateTimeFormatter DATE_FMT = DateTimeFormatter.ofPattern("MM/dd/yyyy");
 
+    // ================= MAIN PROGRAM =================
+    // Handles program flow: login, role selection, and menu navigation
     public static void main(String[] args) {
         Scanner sc = new Scanner(System.in);
 
+        // Load data from CSV files
         Map<String, String[]> employees = loadEmployees(EMPLOYEE_CSV);
         List<String[]> attendance = loadAttendance(ATTENDANCE_CSV);
 
+        // If no employees found, stop execution
         if (employees.isEmpty()) {
             System.out.println("No employees loaded. Check EMPLOYEE_CSV path/name.");
             return;
@@ -41,13 +45,16 @@ public class MotorPHPayrollSystem {
         System.out.println("        MotorPH Payroll System        ");
         System.out.println("======================================");
 
+        // User authentication
         String role = login(sc);
         if (role == null) {
             return;
         }
 
+        // Main loop depending on user role
         while (true) {
 
+            // ================= EMPLOYEE VIEW =================
             if (role.equals("EMPLOYEE")) {
                 System.out.println("\nIf username is: employee");
                 System.out.println("Display options:");
@@ -65,6 +72,7 @@ public class MotorPHPayrollSystem {
                     System.out.println("Invalid choice.");
                 }
 
+            // ================= PAYROLL STAFF VIEW =================    
             } else if (role.equals("PAYROLL")) {
                 System.out.println("\nIf username is: payroll_staff");
                 System.out.println("Display options:");
@@ -175,7 +183,8 @@ public class MotorPHPayrollSystem {
         }
     }
 
-    // ================= DISPLAY PAYROLL =================
+    // ================= PAYROLL CALCULATION =================
+    // Computes salary, deductions, and net pay per cutoff
     static void displayPayrollForEmployee(String empNo, String[] emp, List<String[]> attendance) {
 
         System.out.println("\nEmployee #: " + emp[0]);
@@ -187,12 +196,14 @@ public class MotorPHPayrollSystem {
         for (int month = 6; month <= 12; month++) {
             int year = 2024;
 
+            // Define payroll cutoff periods
             LocalDate firstStart = LocalDate.of(year, month, 1);
             LocalDate firstEnd = LocalDate.of(year, month, 15);
 
             LocalDate secondStart = LocalDate.of(year, month, 16);
             LocalDate secondEnd = YearMonth.of(year, month).atEndOfMonth();
 
+            // Compute worked hours for each cutoff
             double hours1 = computeHoursForEmployeeInRange(empNo, attendance, firstStart, firstEnd);
             double hours2 = computeHoursForEmployeeInRange(empNo, attendance, secondStart, secondEnd);
 
@@ -200,49 +211,68 @@ public class MotorPHPayrollSystem {
                 continue;
             }
 
+            // Compute gross salary per cutoff
             double gross1 = hours1 * hourlyRate;
             double gross2 = hours2 * hourlyRate;
 
-            // deductions based on total monthly gross
+            // Monthly gross used for deductions
             double monthlyGross = gross1 + gross2;
 
+            // Government deductions
             double sss = computeSSS(monthlyGross);
             double philhealth = computePhilHealth(monthlyGross);
             double pagibig = computePagIbig(monthlyGross);
 
+            // Taxable income after mandatory deductions
             double taxable = monthlyGross - (sss + philhealth + pagibig);
+            
+            // Prevent negative taxable income
             if (taxable < 0) {
                 taxable = 0;
             }
 
             double tax = computeWithholdingTax(taxable);
             double totalDeductions = sss + philhealth + pagibig + tax;
-
+            
+            // Payroll rule:
             // first cutoff no deductions
             double net1 = gross1;
 
             // second cutoff includes all deductions
             double net2 = gross2 - totalDeductions;
 
+            // ================= PAYROLL OUTPUT DISPLAY =================
+            // Displays computed payroll details for both cutoffs (1–15 and 16–end of month)
+            
+            // -------- FIRST CUTOFF (NO DEDUCTIONS) --------
+            // First half of the month: employee receives full gross pay (no deductions applied yet)
+
             System.out.println("\nCutoff Date: " + getMonthName(month) + " 1 to " + getMonthName(month) + " 15");
             System.out.println("Total Hours Worked: " + round2(hours1));
             System.out.println("Gross Salary: " + round2(gross1));
             System.out.println("Net Salary: " + round2(net1));
 
+            // -------- SECOND CUTOFF (WITH DEDUCTIONS) --------
+            // Second half: all government deductions and tax are applied here
             System.out.println("\nCutoff Date: " + getMonthName(month) + " 16 to " + getMonthName(month) + " " + secondEnd.getDayOfMonth() + " (Second payout includes all deductions)");
             System.out.println("Total Hours Worked: " + round2(hours2));
             System.out.println("Gross Salary: " + round2(gross2));
+            
+            // Breakdown of deductions for transparency
             System.out.println("Each Deduction:");
             System.out.println("SSS: " + round2(sss));
             System.out.println("PhilHealth: " + round2(philhealth));
             System.out.println("Pag-IBIG: " + round2(pagibig));
             System.out.println("Tax: " + round2(tax));
+            
+            // Total deductions applied in second cutoff
             System.out.println("Total Deductions: " + round2(totalDeductions));
             System.out.println("Net Salary: " + round2(net2));
         }
     }
 
-    // ================= HOURS =================
+    // ================= ATTENDANCE CALCULATION =================
+    // Computes total worked hours of an employee within a date range
     static double computeHoursForEmployeeInRange(String empNo, List<String[]> attendance, LocalDate start, LocalDate end) {
         double totalMinutes = 0;
 
@@ -252,44 +282,50 @@ public class MotorPHPayrollSystem {
             LocalTime login = parseTimeFlexible(row[2]);
             LocalTime logout = parseTimeFlexible(row[3]);
 
+            // Skip if not the target employee
             if (!rowEmpNo.equals(empNo)) {
                 continue;
             }
 
+            // Skip if outside the selected cutoff range
             if (date.isBefore(start) || date.isAfter(end)) {
                 continue;
             }
 
+            // Skip invalid time records
             if (login == null || logout == null) {
                 continue;
             }
 
+            // Official working schedule: 8:00 AM to 5:00 PM
             LocalTime officialIn = LocalTime.of(8, 0);
             LocalTime officialOut = LocalTime.of(17, 0);
 
             LocalTime actualIn = login;
             LocalTime actualOut = logout;
 
-            // 8:05 is treated as 8:00
-            if (!actualIn.isBefore(officialIn) && !actualIn.isAfter(LocalTime.of(8, 5))) {
+            // Apply grace period: arrivals between 8:00–8:10 are treated as 8:00
+            if (!actualIn.isBefore(officialIn) && !actualIn.isAfter(LocalTime.of(8, 10))) {
                 actualIn = officialIn;
             }
 
-            // do not count early log in
+            //// If employee logs in earlier than 8:00, do not count early time
             if (actualIn.isBefore(officialIn)) {
                 actualIn = officialIn;
             }
 
-            // do not count overtime
+            // If employee logs out later than 5:00 PM, ignore overtime
             if (actualOut.isAfter(officialOut)) {
                 actualOut = officialOut;
             }
 
+            // Compute total worked minutes for the day
             long minutes = Duration.between(actualIn, actualOut).toMinutes();
 
-            // subtract 1 hour break
+            // Deduct 1 hour (60 minutes) for unpaid lunch break
             minutes = minutes - 60;
 
+            // Prevent negative work time
             if (minutes < 0) {
                 minutes = 0;
             }
@@ -297,76 +333,185 @@ public class MotorPHPayrollSystem {
             totalMinutes += minutes;
         }
 
+        // Convert minutes to hours
         return totalMinutes / 60.0;
     }
 
     // ================= DEDUCTIONS =================
+    // Contains all government-mandated deductions and tax computations
+    
+    // Computes SSS contribution based on salary bracket
     static double computeSSS(double monthlySalary) {
-        if (monthlySalary < 3250) return 135.00;
-        if (monthlySalary < 3750) return 157.50;
-        if (monthlySalary < 4250) return 180.00;
-        if (monthlySalary < 4750) return 202.50;
-        if (monthlySalary < 5250) return 225.00;
-        if (monthlySalary < 5750) return 247.50;
-        if (monthlySalary < 6250) return 270.00;
-        if (monthlySalary < 6750) return 292.50;
-        if (monthlySalary < 7250) return 315.00;
-        if (monthlySalary < 7750) return 337.50;
-        if (monthlySalary < 8250) return 360.00;
-        if (monthlySalary < 8750) return 382.50;
-        if (monthlySalary < 9250) return 405.00;
-        if (monthlySalary < 9750) return 427.50;
-        if (monthlySalary < 10250) return 450.00;
-        if (monthlySalary < 10750) return 472.50;
-        if (monthlySalary < 11250) return 495.00;
-        if (monthlySalary < 11750) return 517.50;
-        if (monthlySalary < 12250) return 540.00;
-        if (monthlySalary < 12750) return 562.50;
-        if (monthlySalary < 13250) return 585.00;
-        if (monthlySalary < 13750) return 607.50;
-        if (monthlySalary < 14250) return 630.00;
-        if (monthlySalary < 14750) return 652.50;
-        if (monthlySalary < 15250) return 675.00;
-        if (monthlySalary < 15750) return 697.50;
-        if (monthlySalary < 16250) return 720.00;
-        if (monthlySalary < 16750) return 742.50;
-        if (monthlySalary < 17250) return 765.00;
-        if (monthlySalary < 17750) return 787.50;
-        if (monthlySalary < 18250) return 810.00;
-        if (monthlySalary < 18750) return 832.50;
-        if (monthlySalary < 19250) return 855.00;
-        if (monthlySalary < 19750) return 877.50;
-        if (monthlySalary < 20250) return 900.00;
-        if (monthlySalary < 20750) return 922.50;
-        if (monthlySalary < 21250) return 945.00;
-        if (monthlySalary < 21750) return 967.50;
-        if (monthlySalary < 22250) return 990.00;
-        if (monthlySalary < 22750) return 1012.50;
-        if (monthlySalary < 23250) return 1035.00;
-        if (monthlySalary < 23750) return 1057.50;
-        if (monthlySalary < 24250) return 1080.00;
-        if (monthlySalary < 24750) return 1102.50;
+        
+        // Uses salary ranges (brackets) with fixed contribution values
+        if (monthlySalary < 3250) {
+            return 135.00;
+        }
+        if (monthlySalary < 3750) {
+            return 157.50;
+        }
+        if (monthlySalary < 4250) {
+            return 180.00;
+        }
+        if (monthlySalary < 4750) {
+            return 202.50;
+        }
+        if (monthlySalary < 5250) {
+            return 225.00;
+        }
+        if (monthlySalary < 5750) {
+            return 247.50;
+        }
+        if (monthlySalary < 6250) {
+            return 270.00;
+        }
+        if (monthlySalary < 6750) {
+            return 292.50;
+        }
+        if (monthlySalary < 7250) {
+            return 315.00;
+        }
+        if (monthlySalary < 7750) {
+            return 337.50;
+        }
+        if (monthlySalary < 8250) {
+            return 360.00;
+        }
+        if (monthlySalary < 8750) {
+            return 382.50;
+        }
+        if (monthlySalary < 9250) {
+            return 405.00;
+        }
+        if (monthlySalary < 9750) {
+            return 427.50;
+        }
+        if (monthlySalary < 10250) {
+            return 450.00;
+        }
+        if (monthlySalary < 10750) {
+            return 472.50;
+        }
+        if (monthlySalary < 11250) {
+            return 495.00;
+        }
+        if (monthlySalary < 11750) {
+            return 517.50;
+        }
+        if (monthlySalary < 12250) {
+            return 540.00;
+        }
+        if (monthlySalary < 12750) {
+            return 562.50;
+        }
+        if (monthlySalary < 13250) {
+            return 585.00;
+        }
+        if (monthlySalary < 13750) {
+            return 607.50;
+        }
+        if (monthlySalary < 14250) {
+            return 630.00;
+        }
+        if (monthlySalary < 14750) {
+            return 652.50;
+        }
+        if (monthlySalary < 15250) {
+            return 675.00;
+        }
+        if (monthlySalary < 15750) {
+            return 697.50;
+        }
+        if (monthlySalary < 16250) {
+            return 720.00;
+        }
+        if (monthlySalary < 16750) {
+            return 742.50;
+        }
+        if (monthlySalary < 17250) {
+            return 765.00;
+        }
+        if (monthlySalary < 17750) {
+            return 787.50;
+        }
+        if (monthlySalary < 18250) {
+            return 810.00;
+        }
+        if (monthlySalary < 18750) {
+            return 832.50;
+        }
+        if (monthlySalary < 19250) {
+            return 855.00;
+        }
+        if (monthlySalary < 19750) {
+            return 877.50;
+        }
+        if (monthlySalary < 20250) {
+            return 900.00;
+        }
+        if (monthlySalary < 20750) {
+            return 922.50;
+        }
+        if (monthlySalary < 21250) {
+            return 945.00;
+        }
+        if (monthlySalary < 21750) {
+            return 967.50;
+        }
+        if (monthlySalary < 22250) {
+            return 990.00;
+        }
+        if (monthlySalary < 22750) {
+            return 1012.50;
+        }
+        if (monthlySalary < 23250) {
+            return 1035.00;
+        }
+        if (monthlySalary < 23750) {
+            return 1057.50;
+        }
+        if (monthlySalary < 24250) {
+            return 1080.00;
+        }
+        if (monthlySalary < 24750) {
+            return 1102.50;
+        }
+        
+        // Maximum contribution cap
         return 1125.00;
     }
 
+    // Computes PhilHealth contribution
     static double computePhilHealth(double monthlySalary) {
+        
+        // 3% of monthly salary
         double premium = monthlySalary * 0.03;
 
-        if (premium < 300) premium = 300;
-        if (premium > 1800) premium = 1800;
+        // Apply minimum and maximum limits
+        if (premium < 300) {
+            premium = 300;
+        }
+        
+        // Employee pays 50% of total premium
+        if (premium > 1800) {
+            premium = 1800;
+        }
 
         return premium * 0.50;
     }
 
+    // Computes Pag-IBIG contribution
     static double computePagIbig(double monthlySalary) {
         double rate;
 
+        // Contribution rate depends on salary range
         if (monthlySalary >= 1000 && monthlySalary <= 1500) {
             rate = 0.01;
         } else {
             rate = 0.02;
         }
 
+        // Cap at ₱100 maximum contribution
         double contribution = monthlySalary * rate;
 
         if (contribution > 100) {
@@ -376,7 +521,10 @@ public class MotorPHPayrollSystem {
         return contribution;
     }
 
+    // Computes withholding tax using TRAIN law brackets
     static double computeWithholdingTax(double taxableMonthly) {
+        
+        // Progressive tax system (higher income = higher tax rate)
         if (taxableMonthly <= 20832) {
             return 0;
         } else if (taxableMonthly < 33333) {
@@ -392,11 +540,12 @@ public class MotorPHPayrollSystem {
         }
     }
 
-    // ================= CSV LOADING =================
+    // Loads employee data into a Map using employee number as key
     static Map<String, String[]> loadEmployees(String path) {
         Map<String, String[]> map = new LinkedHashMap<>();
         List<String> lines;
 
+        // Try reading all lines from CSV file
         try {
             lines = Files.readAllLines(Paths.get(path));
         } catch (IOException e) {
@@ -404,12 +553,15 @@ public class MotorPHPayrollSystem {
             return map;
         }
 
+        // If file has no data (only header or empty)
         if (lines.size() < 2) {
             return map;
         }
 
+        // Extract header row to identify column positions dynamically
         String[] header = splitCSV(lines.get(0));
 
+        // Find indexes of required columns (handles flexible column naming)
         int idxEmpNo = findIndex(header, "Employee #", "Employee#", "Employee Number");
         int idxLast = findIndex(header, "Last Name");
         int idxFirst = findIndex(header, "First Name");
@@ -419,14 +571,19 @@ public class MotorPHPayrollSystem {
         int idxBasicSalary = findIndex(header, "Basic Salary");
         int idxHourlyRate = findIndex(header, "Hourly Rate");
 
+        // Loop through each row (skip header)
         for (int i = 1; i < lines.size(); i++) {
             String[] row = splitCSV(lines.get(i));
 
+            // Get employee number (primary key)
             String empNo = getSafe(row, idxEmpNo);
+            
+            // Skip rows without employee number
             if (empNo.isEmpty()) {
                 continue;
             }
 
+            // Store only necessary fields in fixed structure
             String[] emp = new String[7];
             emp[0] = empNo;
             emp[1] = getSafe(row, idxLast);
@@ -436,16 +593,19 @@ public class MotorPHPayrollSystem {
             emp[5] = getSafe(row, idxSupervisor);
             emp[6] = getSafe(row, idxHourlyRate);
 
+            // Save to map using employee number as key
             map.put(empNo, emp);
         }
 
         return map;
     }
 
+    // Loads attendance records into a List
     static List<String[]> loadAttendance(String path) {
         List<String[]> list = new ArrayList<>();
         List<String> lines;
 
+        // Try reading attendance CSV file
         try {
             lines = Files.readAllLines(Paths.get(path));
         } catch (IOException e) {
@@ -453,10 +613,12 @@ public class MotorPHPayrollSystem {
             return list;
         }
 
+        // If no data rows exist
         if (lines.size() < 2) {
             return list;
         }
 
+        // Extract header row
         String[] header = splitCSV(lines.get(0));
 
         int idxEmpNo = findIndex(header, "Employee #", "Employee#", "Employee Number");
@@ -464,6 +626,7 @@ public class MotorPHPayrollSystem {
         int idxIn = findIndex(header, "Log In");
         int idxOut = findIndex(header, "Log Out");
 
+        // Process each row (skip header)
         for (int i = 1; i < lines.size(); i++) {
             String[] row = splitCSV(lines.get(i));
 
@@ -472,20 +635,24 @@ public class MotorPHPayrollSystem {
             String inStr = getSafe(row, idxIn);
             String outStr = getSafe(row, idxOut);
 
+            // Skip invalid or incomplete records
             if (empNo.isEmpty() || dateStr.isEmpty()) {
                 continue;
             }
 
             LocalDate date;
             try {
+                // Convert string date to LocalDate using formatter
                 date = LocalDate.parse(dateStr.trim(), DATE_FMT);
             } catch (Exception e) {
+                // Skip invalid date formats
                 continue;
             }
 
+            // Store cleaned attendance record
             String[] att = new String[4];
             att[0] = empNo;
-            att[1] = date.toString();
+            att[1] = date.toString(); // standard ISO format
             att[2] = inStr;
             att[3] = outStr;
 
@@ -496,25 +663,36 @@ public class MotorPHPayrollSystem {
     }
 
     // ================= HELPERS =================
+    // Utility methods for parsing, formatting, and safe data handling
+    
+    // Finds column index based on possible header names
     static int findIndex(String[] headers, String... options) {
         for (int i = 0; i < headers.length; i++) {
             String h = headers[i].trim().replace("\uFEFF", "");
+            
+            // Check against all possible header name variations
             for (String opt : options) {
                 if (h.equalsIgnoreCase(opt)) {
                     return i;
                 }
             }
         }
+        
+        // Return -1 if column not found
         return -1;
     }
 
+    // Safely retrieves value from array (prevents index errors)
     static String getSafe(String[] arr, int idx) {
+        
+        // If index is invalid, return empty string instead of crashing
         if (idx < 0 || idx >= arr.length) {
             return "";
         }
         return arr[idx].trim();
     }
 
+    // Splits CSV line while handling quoted values
     static String[] splitCSV(String line) {
         List<String> parts = new ArrayList<>();
         StringBuilder current = new StringBuilder();
@@ -523,8 +701,11 @@ public class MotorPHPayrollSystem {
         for (int i = 0; i < line.length(); i++) {
             char ch = line.charAt(i);
 
+            // Toggle quote mode
             if (ch == '"') {
                 inQuotes = !inQuotes;
+                
+            // Only split on commas outside quotes
             } else if (ch == ',' && !inQuotes) {
                 parts.add(current.toString());
                 current.setLength(0);
@@ -537,6 +718,7 @@ public class MotorPHPayrollSystem {
         return parts.toArray(new String[0]);
     }
 
+    // Parses time with multiple formats (flexible input handling)
     static LocalTime parseTimeFlexible(String s) {
         if (s == null) {
             return null;
@@ -547,6 +729,7 @@ public class MotorPHPayrollSystem {
             return null;
         }
 
+        // Supports different time formats (e.g., 8:00, 08:00, 8:00 AM)
         String[] patterns = {
             "H:mm", "HH:mm",
             "h:mm a", "hh:mm a",
@@ -561,26 +744,30 @@ public class MotorPHPayrollSystem {
             }
         }
 
+        // Return null if parsing fails
         return null;
     }
 
+    // Converts string to double safely (handles commas and invalid values)
     static double parseMoney(String s) {
         if (s == null) {
             return 0;
         }
 
+        // Remove commas (e.g., "12,000" → "12000")
         s = s.replace(",", "").trim();
         if (s.isEmpty()) {
-            return 0;
+            return 0; 
         }
 
         try {
             return Double.parseDouble(s);
         } catch (Exception e) {
-            return 0;
+            return 0; // Prevent crash on invalid input
         }
     }
 
+    // Returns month name based on number
     static String getMonthName(int month) {
         String[] months = {
             "", "January", "February", "March", "April", "May", "June",
@@ -589,6 +776,7 @@ public class MotorPHPayrollSystem {
         return months[month];
     }
 
+    // Rounds value to 2 decimal places (for currency display)
     static double round2(double value) {
         return Math.round(value * 100.0) / 100.0;
     }
