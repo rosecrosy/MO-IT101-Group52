@@ -196,14 +196,12 @@ public class MotorPHPayrollSystem {
         for (int month = 6; month <= 12; month++) {
             int year = 2024;
 
-            // Define payroll cutoff periods
             LocalDate firstStart = LocalDate.of(year, month, 1);
             LocalDate firstEnd = LocalDate.of(year, month, 15);
 
             LocalDate secondStart = LocalDate.of(year, month, 16);
             LocalDate secondEnd = YearMonth.of(year, month).atEndOfMonth();
 
-            // Compute worked hours for each cutoff
             double hours1 = computeHoursForEmployeeInRange(empNo, attendance, firstStart, firstEnd);
             double hours2 = computeHoursForEmployeeInRange(empNo, attendance, secondStart, secondEnd);
 
@@ -211,64 +209,78 @@ public class MotorPHPayrollSystem {
                 continue;
             }
 
-            // Compute gross salary per cutoff
-            double gross1 = hours1 * hourlyRate;
-            double gross2 = hours2 * hourlyRate;
+            // Compute payroll data
+            double[] payroll = calculatePayrollForCutoff(hours1, hours2, hourlyRate);
 
-            // Monthly gross used for deductions
-            double monthlyGross = gross1 + gross2;
-
-            // Government deductions
-            double sss = computeSSS(monthlyGross);
-            double philhealth = computePhilHealth(monthlyGross);
-            double pagibig = computePagIbig(monthlyGross);
-
-            // Taxable income after mandatory deductions
-            double taxable = monthlyGross - (sss + philhealth + pagibig);
-            
-            // Prevent negative taxable income
-            if (taxable < 0) {
-                taxable = 0;
-            }
-
-            double tax = computeWithholdingTax(taxable);
-            double totalDeductions = sss + philhealth + pagibig + tax;
-            
-            // Payroll rule:
-            // first cutoff no deductions
-            double net1 = gross1;
-
-            // second cutoff includes all deductions
-            double net2 = gross2 - totalDeductions;
-
-            // ================= PAYROLL OUTPUT DISPLAY =================
-            // Displays computed payroll details for both cutoffs (1–15 and 16–end of month)
-            
-            // -------- FIRST CUTOFF (NO DEDUCTIONS) --------
-            // First half of the month: employee receives full gross pay (no deductions applied yet)
-
-            System.out.println("\nCutoff Date: " + getMonthName(month) + " 1 to " + getMonthName(month) + " 15");
-            System.out.println("Total Hours Worked: " + round2(hours1));
-            System.out.println("Gross Salary: " + round2(gross1));
-            System.out.println("Net Salary: " + round2(net1));
-
-            // -------- SECOND CUTOFF (WITH DEDUCTIONS) --------
-            // Second half: all government deductions and tax are applied here
-            System.out.println("\nCutoff Date: " + getMonthName(month) + " 16 to " + getMonthName(month) + " " + secondEnd.getDayOfMonth() + " (Second payout includes all deductions)");
-            System.out.println("Total Hours Worked: " + round2(hours2));
-            System.out.println("Gross Salary: " + round2(gross2));
-            
-            // Breakdown of deductions for transparency
-            System.out.println("Each Deduction:");
-            System.out.println("SSS: " + round2(sss));
-            System.out.println("PhilHealth: " + round2(philhealth));
-            System.out.println("Pag-IBIG: " + round2(pagibig));
-            System.out.println("Tax: " + round2(tax));
-            
-            // Total deductions applied in second cutoff
-            System.out.println("Total Deductions: " + round2(totalDeductions));
-            System.out.println("Net Salary: " + round2(net2));
+            // Print results
+            printPayrollForCutoff(month, hours1, hours2, payroll, secondEnd);
         }
+    }
+    
+    static double[] calculatePayrollForCutoff(double hours1, double hours2, double hourlyRate) {
+
+        double gross1 = hours1 * hourlyRate;
+        double gross2 = hours2 * hourlyRate;
+
+        double monthlyGross = gross1 + gross2;
+
+        double sss = computeSSS(monthlyGross);
+        double philhealth = computePhilHealth(monthlyGross);
+        double pagibig = computePagIbig(monthlyGross);
+
+        double taxable = monthlyGross - (sss + philhealth + pagibig);
+        if (taxable < 0) {
+            taxable = 0;
+        }
+
+        double tax = computeWithholdingTax(taxable);
+
+        double totalDeductions = sss + philhealth + pagibig + tax;
+
+        double net1 = gross1;
+        double net2 = gross2 - totalDeductions;
+
+        return new double[]{
+            gross1, gross2,
+            net1, net2,
+            sss, philhealth, pagibig, tax,
+            totalDeductions
+        };
+    }
+    
+    // ================= PAYROLL OUTPUT DISPLAY =================
+    // Displays computed payroll details for both cutoffs (1–15 and 16–end of month)   
+    static void printPayrollForCutoff(int month, double hours1, double hours2, double[] p, LocalDate secondEnd) {
+
+        double gross1 = p[0];
+        double gross2 = p[1];
+        double net1 = p[2];
+        double net2 = p[3];
+        double sss = p[4];
+        double philhealth = p[5];
+        double pagibig = p[6];
+        double tax = p[7];
+        double totalDeductions = p[8];
+
+        // FIRST CUTOFF
+        System.out.println("\nCutoff Date: " + getMonthName(month) + " 1 to " + getMonthName(month) + " 15");
+        System.out.println("Total Hours Worked: " + round2(hours1));
+        System.out.println("Gross Salary: " + round2(gross1));
+        System.out.println("Net Salary: " + round2(net1));
+
+        // SECOND CUTOFF
+        System.out.println("\nCutoff Date: " + getMonthName(month) + " 16 to " + getMonthName(month) + " " + secondEnd.getDayOfMonth() + " (Second payout includes all deductions)");
+        System.out.println("Total Hours Worked: " + round2(hours2));
+        System.out.println("Gross Salary: " + round2(gross2));
+
+        System.out.println("Each Deduction:");
+        System.out.println("SSS: " + round2(sss));
+        System.out.println("PhilHealth: " + round2(philhealth));
+        System.out.println("Pag-IBIG: " + round2(pagibig));
+        System.out.println("Tax: " + round2(tax));
+
+        System.out.println("Total Deductions: " + round2(totalDeductions));
+        System.out.println("Net Salary: " + round2(net2));
     }
 
     // ================= ATTENDANCE CALCULATION =================
