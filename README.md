@@ -71,7 +71,7 @@ The system reads attendance logs and calculates working hours based on:
 
 Payroll rules applied:
 - Official work hours: 8:00 AM – 5:00 PM
-- Log-ins between 8:00–8:05 AM are treated as on-time
+- Log-ins between 8:00–8:10 AM are treated as on-time
 - Early log-ins are not counted
 - Overtime hours are not included
 - A 1-hour break is deducted daily
